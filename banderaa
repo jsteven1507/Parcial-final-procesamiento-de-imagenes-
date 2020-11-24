@@ -1,0 +1,234 @@
+import numpy as np #librería en la que se define un tipo de dato que representa matrices multidimensionales
+# además incluye algunas funcionalidades básicas para trabajar con ellas
+
+import cv2 #OpenCV es una biblioteca libre de visión artificial originalmente desarrollada por Intel
+
+from sklearn.cluster import KMeans # Libreria que contiente el metodo KMeans de clustering
+from sklearn.utils import shuffle
+from clase import hough
+
+## funcion para recrear la imagen cuando tengamos los parametros de los cluster
+def recreate_image(centers, labels, rows, cols):
+    d = centers.shape[1]
+    image_clusters = np.zeros((rows, cols, d))
+    label_idx = 0
+    for i in range(rows):
+        for j in range(cols):
+            image_clusters[i][j] = centers[labels[label_idx]]  # dependiendo de la posicion del  pixel se le asigna el color
+                                                               # del centro del cluster correspondiente
+            label_idx += 1
+    return image_clusters
+
+class bandera:
+
+    def __init__(self, img):
+
+        # se crean los self para guardar la imagen
+        self.img = img
+        self.num = 0
+        #self.figur='a'
+
+    def colores(self):   # método para generar la figura en la imagen
+
+        # se obtiene el alto y el ancho de la imagen
+        img=self.img
+
+        image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # se cambia el orden de BGR a RGB
+
+        suma = np.ones(4)  # se crea un vector donde se guardaran la suma de distancias intra-cluster
+        # para numero de colores de 1 a 10
+
+        image = np.array(image,dtype=np.float64) / 255  # convertimos la imagen para que tenga un rango entre 0-1 y la convertimos en
+        # tipo de dato flotante para ser trabajada con la libreria matplotlib
+
+        col=0
+        # se recorren los diferentes numeros de colores o numero de clusters
+        n_colors=0
+        while col!=1:
+
+            # covertimos la imagen a formato 2D
+            rows, cols, ch = image.shape
+            assert ch == 3
+            image_array = np.reshape(image, (rows * cols, ch))
+
+            print("Ajuste del modelo en una pequeña submuestra de datos, n_colors=", n_colors + 1)
+
+            image_array_sample = shuffle(image_array, random_state=0)[:10000]
+
+            # modelo de clustering kMeans
+
+            model = KMeans(n_clusters=n_colors+1, random_state=0).fit(image_array_sample)
+
+            # Se encuentran las etiquetas para cada pixel
+            print("Encontrando las etiquetas de cluster para cada pixel, n_colors=", n_colors + 1)
+            labels = model.predict(image_array)
+            centers = model.cluster_centers_
+
+            recreada = recreate_image(centers, labels, rows, cols)  # se recrea la imagen salida del clustering
+            resta = np.absolute(recreada.astype(float) - image.astype(float))  # Encontramos la diferencia de cada color en cada posicion
+            suma[n_colors] = np.sum(resta[:, :, 0] + resta[:, :, 1] + resta[:, :, 2])  # sumamos las diferencias de los colores RGB
+            #print(suma[n_colors])
+            if suma[n_colors]<0.2:
+                col=1
+            n_colors=n_colors+1
+        self.num=suma.argmin()+1
+        return(suma.argmin()+1)
+
+        #print(n_colors)
+
+    def Porcentaje(self): # metodo para encontrar el porcentaje de color
+
+        # Hue histogram
+        image=self.img
+        num=self.num
+        [rows, cols] = image.shape[:2]
+        porcenta=np.zeros(4)
+        image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hist_gray=cv2.calcHist([image_gray], [0], None, [255], [0, 255])
+        for i in range(num):
+            # Hue histogram max and location of max
+            porcenta[i] = hist_gray.max()
+            max_pos = int(hist_gray.argmax())
+            hist_gray[max_pos]=0
+        porcenta=(porcenta/(rows*cols))*100
+        return(porcenta)
+
+    def orientacion(self): # develve la imagen con el poligono y el tipo de poligono
+
+        image=self.img
+        high_thresh = 90
+        bw_edges = cv2.Canny(image, high_thresh * 0.3, high_thresh, L2gradient=True)
+
+
+        accumulator = standard_HT(bw_edges)
+
+        acc_thresh = 50
+        N_peaks = 4
+        nhood = [25, 9]
+        peaks = find_peaks(bw_edges,accumulator, nhood, acc_thresh, N_peaks)
+
+        [_, cols] = image.shape[:2]
+        image_draw = np.copy(image)
+        angulo = np.zeros(N_peaks)
+
+        orien = np.zeros(len(peaks))
+
+        for i in range(len(peaks)):
+            rho = peaks[i][0]
+            theta=np.arange(0, 360, 0.5)
+            theta_ = theta[peaks[i][1]]
+
+            theta_pi = np.pi * theta_ / 180
+            theta_ = theta_ - 180
+            angulo = theta_
+
+            angulo = np.absolute(angulo)
+
+            #print(angulo)
+            if ((angulo >= 0 and angulo < 3) or (angulo > 177 and angulo < 183)):
+                orien[i] = 0
+            elif ((angulo >= 87 and angulo < 93)):
+                orien[i] = 1
+            else:
+                orien[i] = 2
+        suma = np.sum(orien)
+        orientacion = 0
+        #print(suma)
+        if suma == 0:
+            orientacion = 0
+        elif suma == len(peaks):
+            orientacion = 1
+        else:
+            orientacion = 2
+        orien="a"
+        if (orientacion==0):
+            orien="vertical"
+        elif (orientacion==1):
+            orien="horizontal"
+        else:
+            orien = "mixta"
+        return orien
+
+
+def standard_HT(bw_edges):
+    [rows, cols] = bw_edges.shape[:2]
+    center_x = cols // 2
+    center_y = rows // 2
+    theta = np.arange(0, 360, 0.5)
+
+    rmax = int(round(0.5 * np.sqrt(rows ** 2 + cols ** 2)))
+    y, x = np.where(bw_edges >= 1)
+
+    accumulator = np.zeros((rmax, len(theta)))
+
+    for idx, th in enumerate(theta):
+        r = np.around(
+            (x - center_x) * np.cos((th * np.pi) / 180) + (y - center_y) * np.sin((th * np.pi) / 180))
+        r = r.astype(int)
+        r_idx = np.where(np.logical_and(r >= 0, r < rmax))
+        np.add.at(accumulator[:, idx], r[r_idx[0]], 1)
+    return accumulator
+
+def direct_HT(bw_edges, theta_data):
+    [rows, cols] = bw_edges.shape[:2]
+    center_x = cols // 2
+    center_y = rows // 2
+    theta = np.arange(0, 360, 0.5)
+    rmax = int(round(0.5 * np.sqrt(rows ** 2 + cols ** 2)))
+    # y , x = np.where(M >= 0.1)
+    y, x = np.where(bw_edges >= 1)
+
+    x_ = x - center_x
+    y_ = y - center_y
+
+    th = theta_data[y, x] + np.pi / 2
+
+    hist_val, bin_edges = np.histogram(th, bins=32)
+    print('Histogram', hist_val)
+
+    print(np.amin(th), np.amax(th))
+    th[y_ < 0] = th[y_ < 0] + np.pi
+    print(np.amin(th), np.amax(th))
+    accumulator = np.zeros((rmax, len(theta)))
+
+    r = np.around(x_ * np.cos(th) + y_ * np.sin(th))
+    r = r.astype(int)
+    th = np.around(360 * th / np.pi)
+    th = th.astype(int)
+    th[th == 720] = 0
+    print(np.amin(th), np.amax(th))
+    r_idx = np.where(np.logical_and(r >= 0, r < rmax))
+    np.add.at(accumulator, (r[r_idx[0]], th[r_idx[0]]), 1)
+    return accumulator
+
+def find_peaks(bw_edges, accumulator, nhood, accumulator_threshold, N_peaks):
+    [rows, cols] = bw_edges.shape[:2]
+    center_x = cols // 2
+    center_y = rows // 2
+    theta = np.arange(0, 360, 0.5)
+
+    done = False
+    acc_copy = accumulator
+    nhood_center = [(nhood[0] - 1) / 2, (nhood[1] - 1) / 2]
+    peaks = []
+    while not done:
+        [p, q] = np.unravel_index(acc_copy.argmax(), acc_copy.shape)
+        if acc_copy[p, q] >= accumulator_threshold:
+            peaks.append([p, q])
+            p1 = p - nhood_center[0]
+            p2 = p + nhood_center[0]
+            q1 = q - nhood_center[1]
+            q2 = q + nhood_center[1]
+
+            [qq, pp] = np.meshgrid(np.arange(np.max([q1, 0]), np.min([q2, acc_copy.shape[1] - 1]) + 1, 1), \
+                                   np.arange(np.max([p1, 0]), np.min([p2, acc_copy.shape[0] - 1]) + 1, 1))
+            pp = np.array(pp.flatten(), dtype=np.intp)
+            qq = np.array(qq.flatten(), dtype=np.intp)
+
+            acc_copy[pp, qq] = 0
+            done = np.array(peaks).shape[0] == N_peaks
+        else:
+            done = True
+
+    return peaks
+
