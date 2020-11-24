@@ -1,0 +1,25 @@
+import numpy as np #librería en la que se define un tipo de dato que representa matrices multidimensionales
+# además incluye algunas funcionalidades básicas para trabajar con ellas
+
+import os  #libreria para el acceso portable a funciones específicas del sistema operativo
+import cv2 #OpenCV es una biblioteca libre de visión artificial originalmente desarrollada por Intel
+
+from banderaa import bandera # Se importa la clase imageShape
+
+if __name__ == '__main__':
+
+    print('Ingrese ruta de la imagen(agregue al final el nombre de su imagen con su formato):')
+    print('Por ejemplo:  C:/Users/Steven/Documents/8 semestre/Procesamiento de imagenes/flag1.png:  ')
+    dir = input()  # se guarda la direccion de la imagen a procesar
+    #dir="C:/Users/Steven/Documents/8 semestre/Procesamiento de imagenes/flag2.png"
+    image = cv2.imread(dir)
+
+    imagen = bandera(image)  # se construye imageShape y se le agregan los valores de entrada
+    num_color=imagen.colores() # se genera la figura aleatoria en la imagen de tamaño dado
+    print(num_color)
+    porcen=imagen.Porcentaje()
+    print(porcen)
+    orientacion=imagen.orientacion()
+    print(orientacion)
+    
+
